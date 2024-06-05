@@ -3,9 +3,9 @@ package common
 import (
 	"crypto/tls"
 	"fmt"
+	"io"
 	"log"
 	"net/url"
-	"strconv"
 	"strings"
 	"time"
 )
@@ -79,38 +79,8 @@ func (m *MultiString) Set(value string) error {
 	return nil
 }
 
-func PrittyByteSize(bytes int) string {
-	if bytes <= 0 {
-		return strconv.Itoa(bytes) + " B"
-	}
-	i64Bytes := int64(bytes)
-
-	const (
-		_          = iota // ignore first value by assigning to blank identifier
-		KB float64 = 1 << (10 * iota)
-		MB
-		GB
-	)
-	var (
-		result float64
-		unit   string
-	)
-	switch {
-	case i64Bytes >= int64(GB):
-		result, unit = float64(i64Bytes)/GB, "GB"
-	case i64Bytes >= int64(MB):
-		result, unit = float64(i64Bytes)/MB, "MB"
-	case i64Bytes >= int64(KB):
-		result, unit = float64(i64Bytes)/KB, "KB"
-	default:
-		result = float64(i64Bytes)
-		unit = "B" // Bytes
-	}
-	return fmt.Sprintf("%.2f %s", result, unit)
-}
-
 func GenerateSampleDataString(length int) string {
-	pattern := "data-"
+	pattern := "1234567890"
 	patternLength := len(pattern)
 	if length <= 0 {
 		return ""
@@ -121,4 +91,11 @@ func GenerateSampleDataString(length int) string {
 	}
 	repeatedString := strings.Repeat(pattern, repeatCount)
 	return repeatedString[:length]
+}
+
+func SafeClose(closable io.ReadCloser) {
+	err := closable.Close()
+	if err != nil {
+		log.Println("Error closing: ", err)
+	}
 }

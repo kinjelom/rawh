@@ -3,7 +3,7 @@ applications:
     memory: 128M
     instances: 1
     buildpacks: [https://github.com/cloudfoundry/go-buildpack.git]
-    command: rawh --verbose server --port=8080
+    command: rawh server --verbose --port=8080
     path: ../
     env:
       GOPACKAGENAME: rawh

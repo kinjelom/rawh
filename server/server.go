@@ -40,6 +40,7 @@ func NewRequestData(normalizeHeaders bool) *RequestData {
 		headers:       common.NewHttpHeaders(normalizeHeaders),
 		sleepDuration: time.Duration(0),
 		contentLength: 0,
+		bodyHash:      "empty",
 	}
 }
 
@@ -51,55 +52,75 @@ func (r *RequestData) setStartLine(line string) {
 		r.sleepDuration = common.ExtractSleepDurationFromQuery(r.requestURI)
 	}
 }
-
-func writeln(w io.Writer, message string, verbose bool) {
-	if verbose {
-		log.Printf("> %s\n", message)
+func (s *Server) logVerbose(line string) {
+	line = strings.TrimSpace(line)
+	if s.verbose {
+		log.Printf("# %s\n", line)
 	}
-	_, err := fmt.Fprintln(w, message)
+}
+func (s *Server) reqVerbose(line string) {
+	line = strings.TrimSpace(line)
+	if s.verbose {
+		log.Printf("< %s\n", line)
+	}
+}
+
+func (s *Server) respPrintln(w io.Writer, line string) {
+	line = strings.TrimSpace(line)
+	if s.verbose {
+		log.Printf("> %s\n", line)
+	}
+	_, err := fmt.Fprint(w, line+"\r\n")
 	if err != nil {
 		log.Printf("print error: %v", err)
 	}
 }
 
-func (s *Server) PrintPlainTextResponse(w io.Writer, reqData *RequestData, verbose bool) {
-	writeln(w, "HTTP/1.1 200 OK", verbose)
-	writeln(w, "Content-Type: text/plain", verbose)
-	for key, values := range reqData.headers.ResponseHeadersData {
+func (s *Server) PrintPlainTextResponse(w io.Writer, reqData *RequestData) {
+	s.respPrintln(w, "HTTP/1.1 200 OK")
+	s.respPrintln(w, "Content-Type: text/plain")
+	for key, values := range reqData.headers.EchoHeadersData {
 		for _, value := range values {
-			writeln(w, key+": "+value, verbose)
+			s.respPrintln(w, key+": "+value)
 		}
 	}
-	writeln(w, "", verbose)
-	writeln(w, "request-start-line: "+reqData.startLine, verbose)
-	writeln(w, "request-header-lines:", verbose)
+	s.respPrintln(w, "")
+	s.respPrintln(w, "request-start-line: "+reqData.startLine)
+	s.respPrintln(w, "request-header-lines:")
 	for key, values := range reqData.headers.HeadersData {
 		for _, value := range values {
-			writeln(w, "- "+key+": "+value, verbose)
+			s.respPrintln(w, "- "+key+": "+value)
 		}
 	}
-	writeln(w, "request-body-size: "+common.PrittyByteSize(reqData.bodySize), verbose)
-	writeln(w, "request-body-hash: "+reqData.bodyHash, verbose)
-	writeln(w, "request-read-duration: "+reqData.readDuration.String(), verbose)
-	writeln(w, "request-sleep-duration: "+reqData.sleepDuration.String(), verbose)
+	s.respPrintln(w, "request-body-size: "+common.PrittyByteSize(reqData.bodySize))
+	s.respPrintln(w, "request-body-hash: "+reqData.bodyHash)
+	s.respPrintln(w, "request-read-duration: "+reqData.readDuration.String())
+	s.respPrintln(w, "request-sleep-duration: "+reqData.sleepDuration.String())
 }
 
 func (s *Server) ReadRequestData(reader *bufio.Reader) *RequestData {
-	log.Printf("Read request: start\n")
+	s.logVerbose("Read request: start")
 	readStart := time.Now().UnixMilli()
 	reqData := NewRequestData(false)
 	if requestLine, err := reader.ReadString('\n'); err == nil {
 		reqData.setStartLine(strings.TrimSpace(requestLine))
-		log.Printf("< start-line: %s\n", reqData.startLine)
+		s.reqVerbose(reqData.startLine)
 		// header
 		for {
 			line, err := reader.ReadString('\n')
-			if err != nil || line == "\r\n" {
+			if err != nil {
+				log.Printf("read error: %v", err)
 				break
 			}
+			s.reqVerbose(line)
 			line = strings.TrimSpace(line)
-			log.Printf("< header-line: %s\n", line)
-			_ = reqData.headers.AddLine(line)
+			if line == "" {
+				break // end of header
+			}
+			err = reqData.headers.AddLine(line)
+			if err != nil {
+				log.Printf("read header line '%s' error: %v", line, err)
+			}
 		}
 		// get data found in headers
 		if reqData.headers.SleepDuration > 0 {
@@ -110,7 +131,7 @@ func (s *Server) ReadRequestData(reader *bufio.Reader) *RequestData {
 		}
 		// body
 		if reqData.method != "GET" && reqData.method != "HEAD" && reqData.contentLength > 0 {
-			log.Printf("< *** start of body reading ***\n")
+			s.logVerbose("Start of body reading")
 			body := make([]byte, reqData.contentLength)
 			_, err := io.ReadFull(reader, body)
 			if err == nil {
@@ -118,16 +139,16 @@ func (s *Server) ReadRequestData(reader *bufio.Reader) *RequestData {
 				hashAlg := md5.New()
 				hashAlg.Write(body)
 				reqData.bodyHash = fmt.Sprintf("MD5:%x", hashAlg.Sum(nil))
-				log.Printf("< body-size: %d\n", reqData.bodySize)
-				log.Printf("< body-hash: %s\n", reqData.bodyHash)
+				s.logVerbose(fmt.Sprintf("body-size: %d", reqData.bodySize))
+				s.logVerbose(fmt.Sprintf("body-hash: %s", reqData.bodyHash))
 			}
-			log.Printf("< *** end of body reading ***\n")
+			s.logVerbose("End of body reading")
 		} else {
-			log.Printf("< *** body reading skipped ***\n")
+			s.logVerbose("Body reading skipped")
 		}
 	}
 	reqData.readDuration = time.Duration(time.Now().UnixMilli()-readStart) * time.Millisecond
-	log.Printf("Read request: done [%s]", reqData.readDuration.String())
+	s.logVerbose(fmt.Sprintf("Read request: done [%s]", reqData.readDuration.String()))
 	return reqData
 }
 
@@ -135,18 +156,18 @@ func (s *Server) handleTcpConnection(conn net.Conn) {
 	defer func(conn net.Conn) {
 		err := conn.Close()
 		if err != nil {
-			fmt.Printf("Error closing connection: %v", err)
+			log.Printf("Error closing connection: %v", err)
 		}
 	}(conn)
 	reqData := s.ReadRequestData(bufio.NewReader(conn))
 	if reqData.sleepDuration.Milliseconds() > 0 {
 		readStart := time.Now().UnixMilli()
-		log.Printf("Going to sleep for %s", reqData.sleepDuration.String())
+		s.logVerbose(fmt.Sprintf("Going to sleep for %s", reqData.sleepDuration.String()))
 		time.Sleep(reqData.sleepDuration)
 		actualSleepDuration := time.Duration(time.Now().UnixMilli()-readStart) * time.Millisecond
-		log.Printf("Woke up after %s", actualSleepDuration.String())
+		s.logVerbose(fmt.Sprintf("Woke up after %s", actualSleepDuration.String()))
 	}
-	s.PrintPlainTextResponse(conn, reqData, s.verbose)
+	s.PrintPlainTextResponse(conn, reqData)
 }
 
 func (s *Server) Serve() error {
@@ -161,7 +182,7 @@ func (s *Server) Serve() error {
 		}
 	}(ln)
 
-	fmt.Printf("TCP Server is running on :%d\n", s.port)
+	log.Printf("TCP Server is running on :%d\n", s.port)
 	for {
 		conn, err := ln.Accept()
 		if err != nil {

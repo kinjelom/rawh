@@ -9,26 +9,26 @@ import (
 	"time"
 )
 
-const SleepDurationHeaderName = "rawh-Sleep-Duration"
+const SleepDurationHeaderName = "Rawh-Sleep-Duration"
 const ContentLengthHeaderName = "Content-Length"
-const ReturnEchoHeaderNamePrefix = "rawh-Echo-"
+const EchoHeaderName = "Rawh-Echo"
 
 type HttpHeaders struct {
-	normalizeHeaders    bool
-	HeadersData         map[string][]string
-	ResponseHeadersData map[string][]string
-	Host                string
-	SleepDuration       time.Duration
-	ContentLength       int
+	normalizeHeaders bool
+	HeadersData      map[string][]string
+	EchoHeadersData  map[string][]string
+	Host             string
+	SleepDuration    time.Duration
+	ContentLength    int
 }
 
 func NewHttpHeaders(normalizeHeaders bool) *HttpHeaders {
 	return &HttpHeaders{
-		normalizeHeaders:    normalizeHeaders,
-		HeadersData:         make(map[string][]string),
-		ResponseHeadersData: make(map[string][]string),
-		SleepDuration:       0,
-		ContentLength:       0,
+		normalizeHeaders: normalizeHeaders,
+		HeadersData:      make(map[string][]string),
+		EchoHeadersData:  make(map[string][]string),
+		SleepDuration:    0,
+		ContentLength:    0,
 	}
 }
 
@@ -43,8 +43,11 @@ func (h *HttpHeaders) Add(key, value string) {
 	if lk == "host" && value != "" {
 		h.Host = value
 	}
-	if strings.HasPrefix(lk, strings.ToLower(ReturnEchoHeaderNamePrefix)) {
-		h.ResponseHeadersData[key] = append(h.ResponseHeadersData[key], value)
+	if lk == strings.ToLower(EchoHeaderName) {
+		parts := strings.Split(value, " ")
+		for _, echoHeader := range parts {
+			h.EchoHeadersData[echoHeader] = append(h.EchoHeadersData[echoHeader], echoHeader)
+		}
 	}
 
 	if strings.ToLower(SleepDurationHeaderName) == lk {
@@ -65,12 +68,30 @@ func (h *HttpHeaders) Add(key, value string) {
 		}
 	}
 }
+
 func (h *HttpHeaders) AddLine(headerLine string) error {
+	key, val, err := SplitHeaderLine(headerLine)
+	if err == nil {
+		h.Add(key, val)
+	}
+	return err
+}
+
+func (h *HttpHeaders) AddLines(headers []string) error {
+	for _, headerLine := range headers {
+		err := h.AddLine(headerLine)
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func SplitHeaderLine(headerLine string) (key string, value string, err error) {
 	parts := strings.SplitN(headerLine, ":", 2)
 	if len(parts) >= 2 {
-		h.Add(parts[0], parts[1])
-		return nil
+		return parts[0], parts[1], nil
 	} else {
-		return fmt.Errorf("invalid header line: %s", headerLine)
+		return "", "", fmt.Errorf("invalid header line: %s", headerLine)
 	}
 }

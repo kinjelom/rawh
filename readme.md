@@ -52,9 +52,13 @@ This application is a simple client or server that:
 
 ### Command line
 
+`rawh --help`
 ```text
-rawh [flags]
-rawh [command]
+rawh functions either as an HTTP server or as a client to diagnose requests and responses.
+
+Usage:
+  rawh [flags]
+  rawh [command]
 
 Available Commands:
   client      Run as an HTTP client
@@ -66,112 +70,135 @@ Flags:
   -h, --help      help for rawh
   -v, --verbose   Enables verbose output for the operation (client and server modes).
   -V, --version   Displays the application version.
+
+Use "rawh [command] --help" for more information about a command.
 ```
 
 #### Server Usage
+`rawh server --help`
 ```text
+Run as an HTTP server
+
+Usage:
+  rawh server [flags]
+
 Flags:
   -h, --help       help for server
   -p, --port int   Specify the port the server will listen on (default 8080)
-``` 
+
+Global Flags:
+  -v, --verbose   Enables verbose output for the operation (client and server modes).
+  -V, --version   Displays the application version 
+```
 
 #### Client usage
+`rawh client --help`
 ```text
+Run as an HTTP client
+
+Usage:
+  rawh client <url> [flags]
+
 Flags:
-  -d, --data string              Data to be sent as the body of the request, typically with 'POST'.
-      --generate-data-size int   Data size [bytes] to be generated and sent as the body of the request, typically with 'POST'.
-  -H, --header stringArray       Adds a header to the request, format 'key: value'.
-  -h, --help                     help for client
-      --http string              Specifies the HTTP version to use (options: 1.0, 1.1, 2). (default "1.1")
-  -X, --method string            Specifies the HTTP method to use (e.g., 'GET', 'POST'). (default "GET")
-      --normalize-headers        Normalize header names format.
-      --tls string               Specifies the TLS version to use (options: 1.0, 1.1, 1.2, 1.3). (default "1.2")
-  -k, --insecure                 Allow insecure server connections.
-      --url string               Specifies the URL for the client request (default "http://localhost:8080")
+  -C, --canonical                   Specifies whether the 'canonical' client should be used; by default, the 'raw' client will be used.
+  -d, --data string                 Data to be sent as the body of the request, typically with 'POST'.
+      --generate-data-size string   Data size [B|KB|MB|GB] to be generated and sent as the body of the request, typically with 'POST'.
+  -H, --header stringArray          Adds a header to the request, format 'key: value'.
+  -h, --help                        help for client
+      --http string                 Specifies the HTTP version to use (options: 1.0, 1.1, 2). (default "1.1")
+  -k, --insecure                    Allow insecure server connections.
+  -X, --method string               Specifies the HTTP method to use (e.g., 'GET', 'POST'). (default "GET")
+      --normalize-headers           Normalize header names format.
+      --tls string                  Specifies the TLS version to use (options: 1.0, 1.1, 1.2, 1.3). (default "1.2")
+
+Global Flags:
+  -v, --verbose   Enables verbose output for the operation (client and server modes).
+  -V, --version   Displays the application version.
 ```
 
 ### Additional Options
 
 The server allows for artificially extending the query execution time by sleeping for the specified [duration](https://pkg.go.dev/time#ParseDuration), an option is useful for testing timeouts:
 - query parameter: `?rawh-sleep-duration=10m`
-- HTTP header: `rawh-Sleep-Duration: 10m`
+- HTTP header: `Rawh-Sleep-Duration: 10m`
 
-HTTP headers that start with the prefix `rawh-Echo-` will be included in the HTTP response headers. 
+You can use the special `Rawh-Echo` HTTP header to request that the `rawh` server returns the content of the header as HTTP response headers, with the values matching the requested header names (case-sensitive).
+For example, the request header `Rawh-Echo: header-1 hEADERr-2` prompts the `rawh` server to include the following headers in its response:
+- `header-1: header-1`
+- `hEADERr-2: hEADERr-2`
+
 
 ## Example
 
 ### 1. Server: run
 ```bash
-rawh --verbose server --port=8080
+rawh server -v --port=8080
 ```
 ```text
 TCP Server is running on :8080
 ````
 ### 2. Client: request
 ```bash
-rawh --verbose client -X POST -H "x-hEaDeR: abc" -H "x-header: abc" --data="abc"  --url="http://localhost:8080/?rawh-sleep-duration=5s"
+rawh client -v -X POST -H "hEaDeR: abc" -H "Rawh-Echo: test-1 tESt-2" --generate-data-size=10B http://localhost:8080/?rawh-sleep-duration=5s
 ```
 ```text
-> = REQUEST:
 > POST /?rawh-sleep-duration=5s HTTP/1.1
-> req.Host:
-> == REQUEST HEADERS:
-> - x-hEaDeR: abc
-> - x-header: abc
-> - Content-Length: 3
+> Host: localhost:8080
+> hEaDeR: abc
+> Rawh-Echo: test-1 tESt-2
+> Content-Length: 10
+> 
+> 1234567890
 ````
 
 ### 3. Server: log
 ```text
-2024/06/03 11:22:45 Read request: start
-2024/06/03 11:22:45 < start-line: POST /?rawh-sleep-duration=5s HTTP/1.1
-2024/06/03 11:22:45 < header-line: Host: localhost:8080
-2024/06/03 11:22:45 < header-line: User-Agent: Go-http-client/1.1
-2024/06/03 11:22:45 < header-line: Content-Length: 3
-2024/06/03 11:22:45 < header-line: x-hEaDeR: abc
-2024/06/03 11:22:45 < header-line: x-header: abc
-2024/06/03 11:22:45 < header-line: Accept-Encoding: gzip
-2024/06/03 11:22:45 < *** start of body reading ***
-2024/06/03 11:22:45 < body-size: 3
-2024/06/03 11:22:45 < body-hash: MD5:900150983cd24fb0d6963f7d28e17f72
-2024/06/03 11:22:45 < *** end of body reading ***
-2024/06/03 11:22:45 Read request: done [0s]
-2024/06/03 11:22:45 Going to sleep for 5s
-2024/06/03 11:22:50 Woke up after 5.004s
-2024/06/03 11:22:50 > HTTP/1.1 200 OK
-2024/06/03 11:22:50 > Content-Type: text/plain
-2024/06/03 11:22:50 > 
-2024/06/03 11:22:50 > request-start-line: POST /?rawh-sleep-duration=5s HTTP/1.1
-2024/06/03 11:22:50 > request-header-lines:
-2024/06/03 11:22:50 > - Host: localhost:8080
-2024/06/03 11:22:50 > - User-Agent: Go-http-client/1.1
-2024/06/03 11:22:50 > - Content-Length: 3
-2024/06/03 11:22:50 > - x-hEaDeR: abc
-2024/06/03 11:22:50 > - x-header: abc
-2024/06/03 11:22:50 > - Accept-Encoding: gzip
-2024/06/03 11:22:50 > request-body-size: 3.00 B
-2024/06/03 11:22:50 > request-body-hash: MD5:900150983cd24fb0d6963f7d28e17f72
-2024/06/03 11:22:50 > request-read-duration: 0s
-2024/06/03 11:22:50 > request-sleep-duration: 5s
+# Read request: start
+< POST /?rawh-sleep-duration=5s HTTP/1.1
+< Host: localhost:8080
+< hEaDeR: abc
+< Rawh-Echo: test-1 tESt-2
+< Content-Length: 10
+< 
+# Start of body reading
+# body-size: 10
+# body-hash: MD5:e807f1fcf82d132f9bb018ca6738a19f
+# End of body reading
+# Read request: done [0s]
+# Going to sleep for 5s
+# Woke up after 5.004s
+> HTTP/1.1 200 OK
+> Content-Type: text/plain
+> test-1: test-1
+> tESt-2: tESt-2
+> 
+> request-start-line: POST /?rawh-sleep-duration=5s HTTP/1.1
+> request-header-lines:
+> - Host: localhost:8080
+> - hEaDeR: abc
+> - Rawh-Echo: test-1 tESt-2
+> - Content-Length: 10
+> request-body-size: 10.00 B
+> request-body-hash: MD5:e807f1fcf82d132f9bb018ca6738a19f
+> request-read-duration: 0s
+> request-sleep-duration: 5s
 ```  
 
 ### 4. Client: response
 ```text
-< = RESPONSE:
 < HTTP/1.1 200 OK
-< == RESPONSE HEADERS:
-< - Content-Type: text/plain
-
+< Content-Type: text/plain
+< test-1: test-1
+< tESt-2: tESt-2
+< 
 request-start-line: POST /?rawh-sleep-duration=5s HTTP/1.1
 request-header-lines:
-  - Host: localhost:8080
-  - User-Agent: Go-http-client/1.1
-  - Content-Length: 3
-  - x-hEaDeR: abc
-  - x-header: abc
-  - Accept-Encoding: gzip
-request-body-size: 3.00 B
-request-body-hash: MD5:900150983cd24fb0d6963f7d28e17f72
-request-read-duration: 1ms
+- Host: localhost:8080
+- hEaDeR: abc
+- Rawh-Echo: test-1 tESt-2
+- Content-Length: 10
+request-body-size: 10.00 B
+request-body-hash: MD5:e807f1fcf82d132f9bb018ca6738a19f
+request-read-duration: 0s
 request-sleep-duration: 5s
 ```
