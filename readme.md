@@ -52,7 +52,7 @@ This application is a simple client or server that:
 
 ### Command line
 
-`rawh --help`
+`$ rawh --help`
 ```text
 rawh functions either as an HTTP server or as a client to diagnose requests and responses.
 
@@ -75,7 +75,7 @@ Use "rawh [command] --help" for more information about a command.
 ```
 
 #### Server Usage
-`rawh server --help`
+`$ rawh server --help`
 ```text
 Run as an HTTP server
 
@@ -92,7 +92,7 @@ Global Flags:
 ```
 
 #### Client usage
-`rawh client --help`
+`$ rawh client --help`
 ```text
 Run as an HTTP client
 
@@ -132,14 +132,14 @@ For example, the request header `Rawh-Echo: header-1 hEADERr-2` prompts the `raw
 
 ### 1. Server: run
 ```bash
-rawh server -v --port=8080
+$ rawh server -v --port=8080
 ```
 ```text
 TCP Server is running on :8080
 ````
 ### 2. Client: request
 ```bash
-rawh client -v -X POST -H "hEaDeR: abc" -H "Rawh-Echo: test-1 tESt-2" --generate-data-size=10B http://localhost:8080/?rawh-sleep-duration=5s
+$ rawh client -v -X POST -H "hEaDeR: abc" -H "Rawh-Echo: test-1 tESt-2" --generate-data-size=10B http://localhost:8080/?rawh-sleep-duration=5s
 ```
 ```text
 > POST /?rawh-sleep-duration=5s HTTP/1.1
